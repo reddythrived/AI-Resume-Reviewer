@@ -156,6 +156,48 @@ Modify the `weights` dictionary in the `_calculate_overall_rating` method.
 ### Styling
 Customize colors and styles in `static/css/style.css` using CSS variables.
 
+## 🌐 Deployment - Make It Global
+
+Your app is already configured for cloud deployment! Here's how to deploy it:
+
+### Option 1: Railway (Recommended - Free & Easy)
+
+1. **Push to GitHub**:
+   ```bash
+   git add .
+   git commit -m "Deploy AI Resume Analyzer"
+   git push origin main
+   ```
+
+2. **Deploy on Railway**:
+   - Go to https://railway.app
+   - Sign up with GitHub
+   - Click "New Project" → "Deploy from GitHub repo"
+   - Select your repository
+   - Railway auto-detects Python and deploys
+   - Get your public URL: `https://your-app.up.railway.app`
+
+3. **Share your global link!** 🎉
+
+### Option 2: Render
+
+1. Go to https://render.com
+2. Sign up with GitHub
+3. New Web Service → Connect GitHub repo
+4. Build Command: `pip install -r requirements.txt && python -m spacy download en_core_web_sm`
+5. Start Command: `python app.py`
+6. Deploy and get URL: `https://your-app.onrender.com`
+
+### Option 3: PythonAnywhere
+
+1. Go to https://www.pythonanywhere.com
+2. Upload files or clone from GitHub
+3. Create Web App → Flask
+4. Configure and deploy
+5. Get URL: `https://yourname.pythonanywhere.com`
+
+**Your app uses `PORT` environment variable automatically - no code changes needed!**
+
 ## Troubleshooting
 
 ### spaCy Model Not Found
@@ -170,9 +212,9 @@ python -m spacy download en_core_web_sm
 - Verify file is not corrupted
 
 ### Port Already in Use
-Change the port in `app.py`:
+The app automatically uses the PORT environment variable. For local testing:
 ```python
-app.run(debug=True, host='0.0.0.0', port=5001)
+# Already configured in app.py - uses PORT env var or defaults to 5000
 ```
 
 ## Future Enhancements
