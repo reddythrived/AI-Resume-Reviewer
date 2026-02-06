@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Analyzer - Smart Career Insights</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-brain"></i>
+                    <h1>AI Resume Analyzer</h1>
+                </div>
+                <p class="tagline">Transform your resume into a career-winning document</p>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Upload Section -->
+            <section class="upload-section" id="uploadSection">
+                <div class="upload-card">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <h2>Upload Your Resume</h2>
+                    <p class="upload-subtitle">Get instant AI-powered analysis and insights</p>
+                    
+                    <form id="uploadForm" class="upload-form">
+                        <div class="file-input-wrapper">
+                            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt" hidden>
+                            <label for="fileInput" class="file-label">
+                                <i class="fas fa-file-alt"></i>
+                                <span id="fileName">Choose file or drag & drop</span>
+                                <span class="file-types">PDF, DOC, DOCX, TXT (Max 5MB)</span>
+                            </label>
+                        </div>
+                        
+                        <div class="divider">
+                            <span>OR</span>
+                        </div>
+                        
+                        <div class="text-input-wrapper">
+                            <textarea id="textInput" placeholder="Paste your resume text here..." rows="8"></textarea>
+                        </div>
+                        
+                        <button type="submit" class="analyze-btn" id="analyzeBtn">
+                            <i class="fas fa-magic"></i>
+                            <span>Analyze Resume</span>
+                        </button>
+                    </form>
+                    
+                    <div class="loading" id="loading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Analyzing your resume...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <!-- Overall Rating Card -->
+                <div class="rating-card">
+                    <div class="rating-header">
+                        <h2>Overall Rating</h2>
+                        <div class="rating-badge" id="ratingBadge">
+                            <span id="ratingText">Excellent</span>
+                        </div>
+                    </div>
+                    <div class="score-circle">
+                        <svg class="progress-ring" width="200" height="200">
+                            <circle class="progress-ring-circle" stroke="#e0e0e0" stroke-width="12" fill="transparent" r="85" cx="100" cy="100"/>
+                            <circle class="progress-ring-circle progress-ring-circle-active" id="scoreCircle" stroke="#4CAF50" stroke-width="12" fill="transparent" r="85" cx="100" cy="100" stroke-dasharray="534" stroke-dashoffset="534"/>
+                        </svg>
+                        <div class="score-text">
+                            <span id="overallScore">0</span>
+                            <span class="score-label">/ 100</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Statistics Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-file-word"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="wordCount">0</h3>
+                            <p>Words</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-paragraph"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="sentenceCount">0</h3>
+                            <p>Sentences</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-book-reader"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="readabilityScore">0</h3>
+                            <p>Readability</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-code"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="skillsCount">0</h3>
+                            <p>Skills Found</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Score Breakdown -->
+                <div class="score-breakdown">
+                    <h2>Score Breakdown</h2>
+                    <div class="score-items" id="scoreItems">
+                        <!-- Score items will be inserted here -->
+                    </div>
+                </div>
+
+                <!-- Skills Section -->
+                <div class="skills-section">
+                    <h2><i class="fas fa-tools"></i> Skills Detected</h2>
+                    <div class="skills-container" id="skillsContainer">
+                        <!-- Skills will be inserted here -->
+                    </div>
+                </div>
+
+                <!-- Sections Analysis -->
+                <div class="sections-analysis">
+                    <h2><i class="fas fa-list-check"></i> Resume Sections</h2>
+                    <div class="sections-grid" id="sectionsGrid">
+                        <!-- Sections will be inserted here -->
+                    </div>
+                </div>
+
+                <!-- Suggestions -->
+                <div class="suggestions-section">
+                    <h2><i class="fas fa-lightbulb"></i> Improvement Suggestions</h2>
+                    <div class="suggestions-list" id="suggestionsList">
+                        <!-- Suggestions will be inserted here -->
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button class="btn-secondary" onclick="resetAnalysis()">
+                        <i class="fas fa-redo"></i>
+                        Analyze Another Resume
+                    </button>
+                    <button class="btn-primary" onclick="downloadReport()">
+                        <i class="fas fa-download"></i>
+                        Download Report
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Powered by AI & NLP Technology | Built with Flask & Python</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
