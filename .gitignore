@@ -29,10 +29,6 @@ instance/
 
 # Uploads
 uploads/
-*.pdf
-*.doc
-*.docx
-*.txt
 
 # IDE
 .vscode/
