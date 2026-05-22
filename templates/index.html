@@ -7,30 +7,44 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    <!-- Decorative Background Glows -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <div class="header-content">
-                <div class="logo">
-                    <i class="fas fa-brain"></i>
-                    <h1>AI Resume Analyzer</h1>
-                </div>
-                <p class="tagline">Transform your resume into a career-winning document</p>
+            <div class="logo">
+                <i class="fas fa-brain"></i>
+                <h1>AI Resume Analyzer</h1>
             </div>
+            <p class="tagline">Transform your resume into a career-winning document with AI</p>
+            {% if api_configured %}
+            <div class="api-status-badge live">
+                <i class="fas fa-circle-check"></i>
+                <span>Cloud AI Core Engaged</span>
+            </div>
+            {% else %}
+            <div class="api-status-badge local">
+                <i class="fas fa-circle-info"></i>
+                <span>Demo Mode (Local Heuristics). Configure `GEMINI_API_KEY` for full generative AI diagnostics.</span>
+            </div>
+            {% endif %}
         </header>
 
         <!-- Main Content -->
         <main class="main-content">
             <!-- Upload Section -->
             <section class="upload-section" id="uploadSection">
-                <div class="upload-card">
+                <div class="upload-card glass-card">
                     <div class="upload-icon">
                         <i class="fas fa-cloud-upload-alt"></i>
                     </div>
-                    <h2>Upload Your Resume</h2>
-                    <p class="upload-subtitle">Get instant AI-powered analysis and insights</p>
+                    <h2>Advanced Analysis</h2>
+                    <p class="upload-subtitle">Upload your resume and optionally a job description for ATS simulation</p>
                     
                     <form id="uploadForm" class="upload-form">
                         <div class="file-input-wrapper">
@@ -43,44 +57,63 @@
                         </div>
                         
                         <div class="divider">
-                            <span>OR</span>
+                            <span>OPTIONAL: TARGET JOB DESCRIPTION</span>
+                        </div>
+
+                        <div class="text-input-wrapper">
+                            <textarea id="jdInput" placeholder="Paste the target job description here to simulate ATS matching..." rows="4"></textarea>
+                        </div>
+
+                        <div class="divider">
+                            <span>OR: PASTE RESUME TEXT</span>
                         </div>
                         
                         <div class="text-input-wrapper">
-                            <textarea id="textInput" placeholder="Paste your resume text here..." rows="8"></textarea>
+                            <textarea id="textInput" placeholder="Paste your resume text here if you don't have a file..." rows="6"></textarea>
                         </div>
                         
                         <button type="submit" class="analyze-btn" id="analyzeBtn">
                             <i class="fas fa-magic"></i>
-                            <span>Analyze Resume</span>
+                            <span>Start AI Analysis</span>
                         </button>
                     </form>
                     
                     <div class="loading" id="loading" style="display: none;">
                         <div class="spinner"></div>
-                        <p>Analyzing your resume...</p>
+                        <p id="loadingStatus">Scanning biometrics and parsing documents...</p>
                     </div>
                 </div>
             </section>
 
             <!-- Results Section -->
             <section class="results-section" id="resultsSection" style="display: none;">
-                <!-- Overall Rating Card -->
-                <div class="rating-card">
-                    <div class="rating-header">
-                        <h2>Overall Rating</h2>
-                        <div class="rating-badge" id="ratingBadge">
-                            <span id="ratingText">Excellent</span>
+                <!-- Hero Metrics -->
+                <div class="results-hero">
+                    <!-- Overall Rating Card -->
+                    <div class="rating-card glass-card hero-card">
+                        <div class="rating-header">
+                            <h2>ATS Match Score</h2>
+                            <div class="rating-badge" id="ratingBadge">
+                                <span id="ratingText">Analysis Complete</span>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="scoreChart"></canvas>
+                            <div class="score-center">
+                                <span id="overallScore">0</span>
+                                <span class="score-label">%</span>
+                            </div>
                         </div>
                     </div>
-                    <div class="score-circle">
-                        <svg class="progress-ring" width="200" height="200">
-                            <circle class="progress-ring-circle" stroke="#e0e0e0" stroke-width="12" fill="transparent" r="85" cx="100" cy="100"/>
-                            <circle class="progress-ring-circle progress-ring-circle-active" id="scoreCircle" stroke="#4CAF50" stroke-width="12" fill="transparent" r="85" cx="100" cy="100" stroke-dasharray="534" stroke-dashoffset="534"/>
-                        </svg>
-                        <div class="score-text">
-                            <span id="overallScore">0</span>
-                            <span class="score-label">/ 100</span>
+
+                    <!-- AI Summary Card -->
+                    <div class="ai-summary-card glass-card hero-card">
+                        <div class="card-header">
+                            <i class="fas fa-robot"></i>
+                            <h2>AI Executive Summary</h2>
+                        </div>
+                        <div class="ai-content" id="aiSummary">
+                            <!-- AI summary will be inserted here -->
                         </div>
                     </div>
                 </div>
@@ -88,93 +121,85 @@
                 <!-- Statistics Cards -->
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-file-word"></i>
-                        </div>
+                        <div class="stat-icon"><i class="fas fa-file-word"></i></div>
                         <div class="stat-content">
                             <h3 id="wordCount">0</h3>
-                            <p>Words</p>
+                            <p>Word Count</p>
                         </div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-paragraph"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3 id="sentenceCount">0</h3>
-                            <p>Sentences</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-book-reader"></i>
-                        </div>
+                        <div class="stat-icon"><i class="fas fa-book-reader"></i></div>
                         <div class="stat-content">
                             <h3 id="readabilityScore">0</h3>
-                            <p>Readability</p>
+                            <p>Readability Index</p>
                         </div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-code"></i>
+                        <div class="stat-icon"><i class="fas fa-bullseye"></i></div>
+                        <div class="stat-content">
+                            <h3 id="atsScore">0%</h3>
+                            <p>Keyword Match</p>
                         </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-code"></i></div>
                         <div class="stat-content">
                             <h3 id="skillsCount">0</h3>
-                            <p>Skills Found</p>
+                            <p>Skills Identified</p>
                         </div>
+                    </div>
+                </div>
+
+                <!-- ATS & Keywords -->
+                <div class="ats-grid">
+                    <div class="ats-card glass-card">
+                        <h2><i class="fas fa-search-plus"></i> Missing Keywords</h2>
+                        <div class="keywords-list" id="missingKeywords"></div>
+                    </div>
+                    <div class="ats-card glass-card">
+                        <h2><i class="fas fa-exclamation-triangle"></i> Formatting Alerts</h2>
+                        <div class="issues-list" id="formattingIssues"></div>
+                    </div>
+                </div>
+
+                <!-- AI Impact Analysis -->
+                <div class="impact-section glass-card">
+                    <h2><i class="fas fa-bolt"></i> AI Impact Optimization</h2>
+                    <p class="upload-subtitle" style="text-align: left; margin-bottom: 2rem;">Strategic rewrites to boost resume performance and ATS readability:</p>
+                    <div class="impact-list" id="impactList"></div>
+                </div>
+
+                <!-- Skills Categorization -->
+                <div class="skills-grid">
+                    <div class="skills-card glass-card">
+                        <h2><i class="fas fa-layer-group"></i> Skills Categorization</h2>
+                        <div class="skills-categories" id="skillsCategories"></div>
+                    </div>
+                    <div class="advice-card glass-card">
+                        <h2><i class="fas fa-chess"></i> Strategic Roadmap</h2>
+                        <div class="advice-content" id="strategicAdvice"></div>
                     </div>
                 </div>
 
                 <!-- Score Breakdown -->
-                <div class="score-breakdown">
-                    <h2>Score Breakdown</h2>
-                    <div class="score-items" id="scoreItems">
-                        <!-- Score items will be inserted here -->
-                    </div>
-                </div>
-
-                <!-- Skills Section -->
-                <div class="skills-section">
-                    <h2><i class="fas fa-tools"></i> Skills Detected</h2>
-                    <div class="skills-container" id="skillsContainer">
-                        <!-- Skills will be inserted here -->
-                    </div>
-                </div>
-
-                <!-- Sections Analysis -->
-                <div class="sections-analysis">
-                    <h2><i class="fas fa-list-check"></i> Resume Sections</h2>
-                    <div class="sections-grid" id="sectionsGrid">
-                        <!-- Sections will be inserted here -->
-                    </div>
-                </div>
-
-                <!-- Suggestions -->
-                <div class="suggestions-section">
-                    <h2><i class="fas fa-lightbulb"></i> Improvement Suggestions</h2>
-                    <div class="suggestions-list" id="suggestionsList">
-                        <!-- Suggestions will be inserted here -->
-                    </div>
+                <div class="score-breakdown glass-card">
+                    <h2><i class="fas fa-chart-bar"></i> Detailed Metric Breakdown</h2>
+                    <div class="score-items" id="scoreItems"></div>
                 </div>
 
                 <!-- Action Buttons -->
                 <div class="action-buttons">
                     <button class="btn-secondary" onclick="resetAnalysis()">
                         <i class="fas fa-redo"></i>
-                        Analyze Another Resume
+                        New Analysis
                     </button>
                     <button class="btn-primary" onclick="downloadReport()">
                         <i class="fas fa-download"></i>
-                        Download Report
+                        Export PDF Report
                     </button>
                 </div>
             </section>
         </main>
-
-        <!-- Footer -->
-        <footer class="footer">
-            <p>Powered by AI & NLP Technology | Built with Flask & Python</p>
-        </footer>
     </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>

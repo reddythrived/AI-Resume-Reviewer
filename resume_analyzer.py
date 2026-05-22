@@ -7,6 +7,10 @@ import nltk
 from textstat import flesch_reading_ease, syllable_count
 from collections import Counter
 import json
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Download required NLTK data
 try:
@@ -29,14 +33,24 @@ from nltk.tokenize import word_tokenize, sent_tokenize
 
 class ResumeAnalyzer:
     def __init__(self):
-        # Try to load spaCy model, fallback to basic if not available
+        # Try to load spaCy model, auto-download if not available
         try:
             self.nlp = spacy.load("en_core_web_sm")
         except OSError:
-            print("Warning: spaCy model not found. Using basic NLP.")
-            self.nlp = None
+            print("Warning: spaCy model 'en_core_web_sm' not found. Attempting download...")
+            try:
+                from spacy.cli import download
+                download("en_core_web_sm")
+                self.nlp = spacy.load("en_core_web_sm")
+            except Exception as e:
+                print(f"Warning: Could not download spaCy model: {e}. Using basic NLP fallback.")
+                self.nlp = None
         
         self.stop_words = set(stopwords.words('english'))
+        self.grok_api_key = os.environ.get("GROK_API_KEY")
+        self.gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
+        self.api_key = self.grok_api_key or self.gemini_api_key or self.openai_api_key
         
         # Keywords for different sections
         self.skills_keywords = [
@@ -55,6 +69,13 @@ class ResumeAnalyzer:
             'experience', 'worked', 'years', 'responsible', 'developed', 'managed',
             'led', 'implemented', 'created', 'designed', 'achieved', 'improved'
         ]
+
+    def refresh_keys(self):
+        """Refresh API keys from environment variables dynamically."""
+        self.grok_api_key = os.environ.get("GROK_API_KEY")
+        self.gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
+        self.api_key = self.grok_api_key or self.gemini_api_key or self.openai_api_key
 
     def extract_text_from_file(self, filepath):
         """Extract text from PDF, DOCX, or TXT file"""
@@ -87,13 +108,14 @@ class ResumeAnalyzer:
             text += paragraph.text + "\n"
         return text
 
-    def analyze(self, filepath):
+    def analyze(self, filepath, job_description=None):
         """Analyze resume from file"""
         text = self.extract_text_from_file(filepath)
-        return self.analyze_text(text)
+        return self.analyze_text(text, job_description)
 
-    def analyze_text(self, text):
+    def analyze_text(self, text, job_description=None):
         """Comprehensive resume analysis"""
+        self.refresh_keys()
         if not text or not text.strip():
             return {'error': 'Empty text provided'}
         
@@ -125,7 +147,7 @@ class ResumeAnalyzer:
         # Generate suggestions
         suggestions = self._generate_suggestions(text, sections, skills, education, experience, scores)
         
-        return {
+        result = {
             'statistics': {
                 'word_count': word_count,
                 'char_count': char_count,
@@ -140,6 +162,340 @@ class ResumeAnalyzer:
             'scores': scores,
             'suggestions': suggestions,
             'overall_rating': self._calculate_overall_rating(scores)
+        }
+
+        # Select and run the appropriate LLM analyzer, or fallback to heuristics
+        ai_analysis = None
+        if self.gemini_api_key:
+            ai_analysis = self._analyze_with_gemini(text, job_description)
+        elif self.grok_api_key:
+            ai_analysis = self._analyze_with_llm(text, job_description)
+        elif self.openai_api_key:
+            ai_analysis = self._analyze_with_openai(text, job_description)
+        
+        # Fallback to local heuristic analyzer if cloud API fails or no API keys are present
+        if not ai_analysis or 'error' in ai_analysis:
+            if ai_analysis and 'error' in ai_analysis:
+                print(f"Cloud LLM analysis failed: {ai_analysis['error']}. Falling back to local analyzer.")
+            ai_analysis = self._analyze_with_fallback(text, job_description)
+            
+        result['ai_analysis'] = ai_analysis
+        return result
+
+    def _analyze_with_llm(self, resume_text, job_description=None):
+        """Perform deep semantic analysis using an LLM."""
+        if not self.api_key:
+            return None
+
+        jd_prompt = ""
+        if job_description:
+            jd_prompt = f"\nTARGET JOB DESCRIPTION:\n{job_description}\n"
+
+        prompt = f"""
+        You are an expert technical recruiter and ATS (Applicant Tracking System) specialist.
+        Analyze the following resume and provide a high-level, professional critique.
+        {jd_prompt}
+        RESUME CONTENT:
+        {resume_text}
+
+        Return ONLY valid JSON with this structure:
+        {{
+            "summary": "Professional executive summary of the candidate's profile.",
+            "ats_compatibility": {{
+                "score": 0-100,
+                "missing_keywords": ["keyword1", "keyword2"],
+                "formatting_issues": ["issue1"]
+            }},
+            "impact_analysis": [
+                {{
+                    "original": "original bullet point",
+                    "critique": "why it's weak",
+                    "optimized": "suggested high-impact version using action verbs and metrics"
+                }}
+            ],
+            "skills_categorization": {{
+                "Frontend": [],
+                "Backend": [],
+                "DevOps/Cloud": [],
+                "Tools/Others": []
+            }},
+            "strategic_advice": "Top 3 strategic things this person should do to land this role."
+        }}
+        """
+
+        try:
+            response = requests.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "grok-beta",
+                    "messages": [
+                        {"role": "system", "content": "You are a clinical career AI. Respond only in valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.4
+                },
+                timeout=30
+            )
+            data = response.json()
+            return json.loads(self._clean_json_string(data["choices"][0]["message"]["content"]))
+        except Exception as e:
+            print(f"LLM Analysis Error: {str(e)}")
+            return {"error": "LLM Analysis failed"}
+
+    def _clean_json_string(self, text):
+        """Strip markdown code blocks from a JSON response if present."""
+        text = text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        elif text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        return text.strip()
+
+    def _analyze_with_gemini(self, resume_text, job_description=None):
+        """Perform deep semantic analysis using Google Gemini API."""
+        if not self.gemini_api_key:
+            return None
+
+        jd_prompt = ""
+        if job_description:
+            jd_prompt = f"\nTARGET JOB DESCRIPTION:\n{job_description}\n"
+
+        prompt = f"""
+        You are an expert technical recruiter and ATS (Applicant Tracking System) specialist.
+        Analyze the following resume and provide a high-level, professional critique.
+        {jd_prompt}
+        RESUME CONTENT:
+        {resume_text}
+
+        Return ONLY valid JSON with this structure:
+        {{
+            "summary": "Professional executive summary of the candidate's profile.",
+            "ats_compatibility": {{
+                "score": 0-100,
+                "missing_keywords": ["keyword1", "keyword2"],
+                "formatting_issues": ["issue1"]
+            }},
+            "impact_analysis": [
+                {{
+                    "original": "original bullet point",
+                    "critique": "why it's weak",
+                    "optimized": "suggested high-impact version using action verbs and metrics"
+                }}
+            ],
+            "skills_categorization": {{
+                "Frontend": [],
+                "Backend": [],
+                "DevOps/Cloud": [],
+                "Tools/Others": []
+            }},
+            "strategic_advice": "Top 3 strategic things this person should do to land this role."
+        }}
+        """
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.gemini_api_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "responseMimeType": "application/json"
+            }
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            res_json = response.json()
+            content_text = res_json['candidates'][0]['content']['parts'][0]['text']
+            return json.loads(self._clean_json_string(content_text))
+        except Exception as e:
+            print(f"Gemini Analysis Error: {str(e)}")
+            return {"error": f"Gemini Analysis failed: {str(e)}"}
+
+    def _analyze_with_openai(self, resume_text, job_description=None):
+        """Perform deep semantic analysis using OpenAI API."""
+        if not self.openai_api_key:
+            return None
+
+        jd_prompt = ""
+        if job_description:
+            jd_prompt = f"\nTARGET JOB DESCRIPTION:\n{job_description}\n"
+
+        prompt = f"""
+        You are an expert technical recruiter and ATS (Applicant Tracking System) specialist.
+        Analyze the following resume and provide a high-level, professional critique.
+        {jd_prompt}
+        RESUME CONTENT:
+        {resume_text}
+
+        Return ONLY valid JSON with this structure:
+        {{
+            "summary": "Professional executive summary of the candidate's profile.",
+            "ats_compatibility": {{
+                "score": 0-100,
+                "missing_keywords": ["keyword1", "keyword2"],
+                "formatting_issues": ["issue1"]
+            }},
+            "impact_analysis": [
+                {{
+                    "original": "original bullet point",
+                    "critique": "why it's weak",
+                    "optimized": "suggested high-impact version using action verbs and metrics"
+                }}
+            ],
+            "skills_categorization": {{
+                "Frontend": [],
+                "Backend": [],
+                "DevOps/Cloud": [],
+                "Tools/Others": []
+            }},
+            "strategic_advice": "Top 3 strategic things this person should do to land this role."
+        }}
+        """
+
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {"role": "system", "content": "You are a clinical career AI. Respond only in valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.4
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            return json.loads(self._clean_json_string(content))
+        except Exception as e:
+            print(f"OpenAI Analysis Error: {str(e)}")
+            return {"error": f"OpenAI Analysis failed: {str(e)}"}
+
+    def _analyze_with_fallback(self, text, job_description=None):
+        """Fallback analysis when no LLM API key is present."""
+        skills = self._extract_skills(text)
+        
+        frontend_keywords = ['react', 'angular', 'vue', 'html', 'css', 'javascript', 'typescript', 'frontend', 'jquery', 'bootstrap', 'tailwind']
+        backend_keywords = ['python', 'java', 'node', 'express', 'django', 'flask', 'sql', 'mongodb', 'postgresql', 'backend', 'c#', 'c++', 'ruby', 'php', 'golang']
+        devops_keywords = ['aws', 'docker', 'kubernetes', 'ci/cd', 'git', 'linux', 'azure', 'gcp', 'jenkins', 'terraform', 'ansible']
+        
+        skills_cat = {
+            "Frontend": [],
+            "Backend": [],
+            "DevOps/Cloud": [],
+            "Tools/Others": []
+        }
+        
+        for s in skills:
+            s_lower = s.lower()
+            if any(k in s_lower for k in frontend_keywords):
+                skills_cat["Frontend"].append(s)
+            elif any(k in s_lower for k in backend_keywords):
+                skills_cat["Backend"].append(s)
+            elif any(k in s_lower for k in devops_keywords):
+                skills_cat["DevOps/Cloud"].append(s)
+            else:
+                skills_cat["Tools/Others"].append(s)
+                
+        # Find missing keywords if Job Description is provided
+        missing_kw = []
+        if job_description:
+            jd_lower = job_description.lower()
+            for kw in self.skills_keywords:
+                if kw in jd_lower and kw.title() not in skills:
+                    missing_kw.append(kw.title())
+            if not missing_kw:
+                missing_kw = ["System Design", "Scalability", "Agile Methodologies"]
+        else:
+            missing_kw = ["Quantifiable Metrics", "Action Verbs", "Profile Summary"]
+            
+        # Basic formatting check
+        formatting_issues = []
+        sections = self._extract_sections(text)
+        if not sections.get('summary'):
+            formatting_issues.append("Missing professional summary section at the top of the resume.")
+        if not sections.get('contact'):
+            formatting_issues.append("Contact details section not clearly identified. Ensure email and phone are easy to parse.")
+        
+        word_count = len(text.split())
+        if word_count > 1000:
+            formatting_issues.append("Resume exceeds 1000 words. Try to keep it concise and under 2 pages.")
+        elif word_count < 300:
+            formatting_issues.append("Resume is under 300 words. Add more details about achievements and responsibilities.")
+            
+        # Basic impact optimization template
+        bullet_points = []
+        for line in text.split('\n'):
+            line = line.strip()
+            if line.startswith(('-', '*', '•')) or (len(line) > 15 and any(line.startswith(verb) for verb in ['Developed', 'Managed', 'Led', 'Created', 'Designed', 'Responsible', 'Worked'])):
+                cleaned_line = re.sub(r'^[-*•]\s*', '', line).strip()
+                if len(cleaned_line) > 20:
+                    bullet_points.append(cleaned_line)
+                    if len(bullet_points) >= 3:
+                        break
+                    
+        impact_analysis = []
+        default_bullets = [
+            ("Responsible for writing code and debugging issues.", 
+             "Uses passive 'responsible for' language and lacks quantifiable impact metrics.", 
+             "Engineered and debugged core features, reducing system latency by 15% and resolving 40+ critical bugs."),
+            ("Managed a team of developers to build web apps.",
+             "Vague description that does not specify team size, technologies, or business outcomes.",
+             "Led a cross-functional team of 6 engineers to deliver 3 high-scale web applications using React and Node.js, boosting user engagement by 25%.")
+        ]
+        
+        if bullet_points:
+            for bp in bullet_points:
+                impact_analysis.append({
+                    "original": bp,
+                    "critique": "Lacks specific quantifiable metrics (percentages, dollar values, time savings) and strong action verbs.",
+                    "optimized": f"Architected and optimized key components using industry best practices, resulting in a 20% increase in operational efficiency."
+                })
+        
+        if not impact_analysis:
+            for orig, crit, opt in default_bullets:
+                impact_analysis.append({
+                    "original": orig,
+                    "critique": crit,
+                    "optimized": opt
+                })
+                
+        # Strategic advice
+        advice = "1. **Integrate Action Verbs & Metrics**: Rewrite your experience bullet points using the STAR methodology (Situation, Task, Action, Result) to highlight quantifiable outcomes.\n"
+        advice += "2. **Target Keywords**: Align your skills and terminology with the job description to pass automated ATS filters.\n"
+        advice += "3. **Configure API Key**: To unlock personalized, deep semantic AI insights and customized suggestions, please configure a `GEMINI_API_KEY` or `GROK_API_KEY` in your environment."
+        
+        completeness = sum(1 for v in sections.values() if v) / 7.0
+        score = int(45 + completeness * 35 + (min(len(skills), 10) / 10.0) * 15)
+        if score > 98: 
+            score = 98
+        
+        return {
+            "summary": "This is a local heuristics analysis of your resume. You have strong foundations in " + (", ".join(skills[:3]) if skills else "technical fields") + ". To unlock a full generative AI executive summary, please configure a Gemini or Grok API key.",
+            "ats_compatibility": {
+                "score": score,
+                "missing_keywords": missing_kw[:5],
+                "formatting_issues": formatting_issues if formatting_issues else ["None identified by local parser."]
+            },
+            "impact_analysis": impact_analysis[:3],
+            "skills_categorization": skills_cat,
+            "strategic_advice": advice
         }
 
     def _extract_sections(self, text):

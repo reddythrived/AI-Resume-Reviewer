@@ -2,48 +2,26 @@
 const uploadForm = document.getElementById('uploadForm');
 const fileInput = document.getElementById('fileInput');
 const fileName = document.getElementById('fileName');
+const jdInput = document.getElementById('jdInput');
 const textInput = document.getElementById('textInput');
 const analyzeBtn = document.getElementById('analyzeBtn');
 const loading = document.getElementById('loading');
 const uploadSection = document.getElementById('uploadSection');
 const resultsSection = document.getElementById('resultsSection');
+const loadingStatus = document.getElementById('loadingStatus');
 
-// Store analysis data globally
+// Global Chart instance
+let scoreChart = null;
 let currentAnalysisData = null;
 
 // File input handling
 fileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
         fileName.textContent = e.target.files[0].name;
-        fileName.style.color = '#6366f1';
+        fileName.style.color = '#818cf8';
     } else {
         fileName.textContent = 'Choose file or drag & drop';
         fileName.style.color = '';
-    }
-});
-
-// Drag and drop
-const fileLabel = document.querySelector('.file-label');
-fileLabel.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    fileLabel.style.borderColor = '#6366f1';
-    fileLabel.style.background = 'rgba(99, 102, 241, 0.15)';
-});
-
-fileLabel.addEventListener('dragleave', () => {
-    fileLabel.style.borderColor = '#334155';
-    fileLabel.style.background = 'rgba(99, 102, 241, 0.05)';
-});
-
-fileLabel.addEventListener('drop', (e) => {
-    e.preventDefault();
-    fileLabel.style.borderColor = '#334155';
-    fileLabel.style.background = 'rgba(99, 102, 241, 0.05)';
-    
-    if (e.dataTransfer.files.length > 0) {
-        fileInput.files = e.dataTransfer.files;
-        fileName.textContent = e.dataTransfer.files[0].name;
-        fileName.style.color = '#6366f1';
     }
 });
 
@@ -53,6 +31,7 @@ uploadForm.addEventListener('submit', async (e) => {
     
     const file = fileInput.files[0];
     const text = textInput.value.trim();
+    const jobDescription = jdInput.value.trim();
     
     if (!file && !text) {
         alert('Please upload a file or paste resume text');
@@ -63,24 +42,17 @@ uploadForm.addEventListener('submit', async (e) => {
     
     try {
         let response;
-        
+        const formData = new FormData();
+        if (jobDescription) formData.append('job_description', jobDescription);
+
         if (file) {
-            // Upload file
-            const formData = new FormData();
             formData.append('file', file);
-            
-            response = await fetch('/api/analyze', {
-                method: 'POST',
-                body: formData
-            });
+            response = await fetch('/api/analyze', { method: 'POST', body: formData });
         } else {
-            // Analyze text
             response = await fetch('/api/analyze-text', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ text: text })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text, job_description: jobDescription })
             });
         }
         
@@ -90,7 +62,7 @@ uploadForm.addEventListener('submit', async (e) => {
         }
         
         const data = await response.json();
-        currentAnalysisData = data; // Store for report generation
+        currentAnalysisData = data;
         displayResults(data);
         
     } catch (error) {
@@ -100,340 +72,248 @@ uploadForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Show loading state
 function showLoading() {
     loading.style.display = 'block';
     analyzeBtn.disabled = true;
-    analyzeBtn.style.opacity = '0.6';
-    analyzeBtn.style.cursor = 'not-allowed';
+    const statuses = [
+        "Scanning document structure...",
+        "Extracting biometric skill markers...",
+        "Simulating ATS compatibility...",
+        "Generating semantic improvements...",
+        "Finalizing diagnostic report..."
+    ];
+    let i = 0;
+    const interval = setInterval(() => {
+        if (loading.style.display === 'none') {
+            clearInterval(interval);
+            return;
+        }
+        loadingStatus.textContent = statuses[i % statuses.length];
+        i++;
+    }, 1500);
 }
 
-// Hide loading state
 function hideLoading() {
     loading.style.display = 'none';
     analyzeBtn.disabled = false;
-    analyzeBtn.style.opacity = '1';
-    analyzeBtn.style.cursor = 'pointer';
 }
 
-// Display results
+function renderScoreChart(score) {
+    const canvas = document.getElementById('scoreChart');
+    const ctx = canvas.getContext('2d');
+    if (scoreChart) scoreChart.destroy();
+    
+    // Create gradient
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, '#6366f1');
+    gradient.addColorStop(1, '#a855f7');
+
+    scoreChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            datasets: [{
+                data: [score, 100 - score],
+                backgroundColor: [gradient, 'rgba(255, 255, 255, 0.03)'],
+                borderWidth: 0,
+                borderRadius: 20,
+            }]
+        },
+        options: {
+            cutout: '85%',
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 2000,
+                easing: 'easeOutQuart'
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false }
+            }
+        }
+    });
+}
+
 function displayResults(data) {
     hideLoading();
     
-    // Hide upload section, show results
-    uploadSection.style.display = 'none';
-    resultsSection.style.display = 'block';
+    // Smooth transition sequence
+    uploadSection.style.opacity = '0';
+    uploadSection.style.transform = 'scale(0.95)';
+    uploadSection.style.transition = 'all 0.4s ease';
     
-    // Scroll to results
-    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    
-    // Update statistics
-    updateStatistics(data.statistics);
-    
-    // Update overall rating
-    updateOverallRating(data.overall_rating, data.scores);
-    
-    // Update score breakdown
-    updateScoreBreakdown(data.scores);
-    
-    // Update skills
-    updateSkills(data.skills);
-    
-    // Update sections
-    updateSections(data.sections);
-    
-    // Update suggestions
-    updateSuggestions(data.suggestions);
+    setTimeout(() => {
+        uploadSection.style.display = 'none';
+        resultsSection.style.display = 'block';
+        resultsSection.style.opacity = '0';
+        resultsSection.style.transform = 'translateY(30px)';
+        
+        // Trigger reflow
+        resultsSection.offsetHeight;
+        
+        resultsSection.style.transition = 'all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        resultsSection.style.opacity = '1';
+        resultsSection.style.transform = 'translateY(0)';
+        
+        // Update stats with delay for effect
+        document.getElementById('wordCount').textContent = data.statistics.word_count.toLocaleString();
+        document.getElementById('readabilityScore').textContent = Math.round(data.statistics.readability_score);
+        document.getElementById('skillsCount').textContent = data.skills.length;
+
+        const overallScore = data.ai_analysis ? data.ai_analysis.ats_compatibility.score : data.overall_rating.score;
+        renderScoreChart(overallScore);
+        animateValue("overallScore", 0, Math.round(overallScore), 2000);
+        document.getElementById('atsScore').textContent = Math.round(overallScore) + "%";
+        
+        const ratingBadge = document.getElementById('ratingBadge');
+        const rating = data.overall_rating.rating;
+        ratingBadge.textContent = rating;
+        ratingBadge.className = 'rating-badge ' + rating.toLowerCase().replace(' ', '-');
+
+        if (data.ai_analysis) renderAIAnalysis(data.ai_analysis);
+        updateScoreBreakdown(data.scores);
+        
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 400);
 }
 
-// Update statistics
-function updateStatistics(stats) {
-    document.getElementById('wordCount').textContent = stats.word_count.toLocaleString();
-    document.getElementById('sentenceCount').textContent = stats.sentence_count;
-    document.getElementById('readabilityScore').textContent = Math.round(stats.readability_score);
-    document.getElementById('skillsCount').textContent = document.querySelectorAll('.skill-tag').length || 0;
+function animateValue(id, start, end, duration) {
+    const obj = document.getElementById(id);
+    let startTimestamp = null;
+    const step = (timestamp) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        obj.innerHTML = Math.floor(progress * (end - start) + start);
+        if (progress < 1) {
+            window.requestAnimationFrame(step);
+        }
+    };
+    window.requestAnimationFrame(step);
 }
 
-// Update overall rating
-function updateOverallRating(rating, scores) {
-    const score = rating.score;
-    const ratingText = rating.rating;
-    
-    // Update score circle
-    const circle = document.getElementById('scoreCircle');
-    const circumference = 2 * Math.PI * 85;
-    const offset = circumference - (score / 100) * circumference;
-    circle.style.strokeDashoffset = offset;
-    
-    // Update score text
-    document.getElementById('overallScore').textContent = Math.round(score);
-    
-    // Update rating badge
-    const ratingBadge = document.getElementById('ratingBadge');
-    ratingBadge.textContent = ratingText;
-    ratingBadge.className = 'rating-badge ' + ratingText.toLowerCase().replace(' ', '-');
+function renderAIAnalysis(ai) {
+    // Summary
+    document.getElementById('aiSummary').textContent = ai.summary;
+
+    // Missing Keywords
+    const keywordsContainer = document.getElementById('missingKeywords');
+    keywordsContainer.innerHTML = '';
+    if (ai.ats_compatibility.missing_keywords && ai.ats_compatibility.missing_keywords.length > 0) {
+        ai.ats_compatibility.missing_keywords.forEach(kw => {
+            const span = document.createElement('span');
+            span.className = 'keyword-tag';
+            span.textContent = kw;
+            keywordsContainer.appendChild(span);
+        });
+    } else {
+        keywordsContainer.innerHTML = '<p class="success-text">Perfect! No critical keywords missing.</p>';
+    }
+
+    // Formatting Issues
+    const issuesContainer = document.getElementById('formattingIssues');
+    issuesContainer.innerHTML = '';
+    if (ai.ats_compatibility.formatting_issues) {
+        ai.ats_compatibility.formatting_issues.forEach(issue => {
+            const div = document.createElement('div');
+            div.className = 'issue-item';
+            div.style.padding = '10px 0';
+            div.innerHTML = `<i class="fas fa-times-circle" style="color: #ef4444; margin-right: 10px;"></i> ${issue}`;
+            issuesContainer.appendChild(div);
+        });
+    }
+
+    // Impact Analysis
+    const impactList = document.getElementById('impactList');
+    impactList.innerHTML = '';
+    if (ai.impact_analysis) {
+        ai.impact_analysis.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'impact-item';
+            div.innerHTML = `
+                <div class="impact-original">"${item.original}"</div>
+                <div class="impact-critique"><i class="fas fa-info-circle"></i> ${item.critique}</div>
+                <div class="impact-optimized"><i class="fas fa-check-circle"></i> ${item.optimized}</div>
+            `;
+            impactList.appendChild(div);
+        });
+    }
+
+    // Skills Categorization
+    const skillsContainer = document.getElementById('skillsCategories');
+    skillsContainer.innerHTML = '';
+    if (ai.skills_categorization) {
+        for (const [category, skills] of Object.entries(ai.skills_categorization)) {
+            if (skills.length === 0) continue;
+            const group = document.createElement('div');
+            group.className = 'skill-group';
+            group.innerHTML = `
+                <h4>${category}</h4>
+                <div class="skills-list" style="display: flex; flex-wrap: wrap; gap: 8px;">${skills.map(s => `<span class="skill-tag">${s}</span>`).join('')}</div>
+            `;
+            skillsContainer.appendChild(group);
+        }
+    }
+
+    // Strategic Advice
+    document.getElementById('strategicAdvice').innerHTML = `<p style="line-height: 1.6;">${ai.strategic_advice}</p>`;
 }
 
-// Update score breakdown
 function updateScoreBreakdown(scores) {
     const scoreItems = document.getElementById('scoreItems');
     scoreItems.innerHTML = '';
-    
     const scoreLabels = {
         completeness: { label: 'Completeness', icon: 'fas fa-check-circle' },
-        skills: { label: 'Skills', icon: 'fas fa-tools' },
-        experience: { label: 'Experience', icon: 'fas fa-briefcase' },
-        education: { label: 'Education', icon: 'fas fa-graduation-cap' },
-        readability: { label: 'Readability', icon: 'fas fa-book-reader' },
-        length: { label: 'Length', icon: 'fas fa-ruler' }
+        skills: { label: 'Technical Skills', icon: 'fas fa-tools' },
+        experience: { label: 'Work History', icon: 'fas fa-briefcase' },
+        readability: { label: 'Readability', icon: 'fas fa-book-reader' }
     };
     
     for (const [key, value] of Object.entries(scores)) {
         if (scoreLabels[key]) {
-            const item = document.createElement('div');
-            item.className = 'score-item';
-            
-            const roundedScore = Math.round(value);
-            const color = getScoreColor(value);
-            
-            item.innerHTML = `
-                <div class="score-item-label">
-                    <i class="${scoreLabels[key].icon}"></i>
-                    <span>${scoreLabels[key].label}</span>
+            const div = document.createElement('div');
+            div.className = 'score-item';
+            div.style.marginBottom = '10px';
+            div.innerHTML = `
+                <div class="score-item-label" style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                    <i class="${scoreLabels[key].icon}" style="color: #6366f1;"></i> ${scoreLabels[key].label}
                 </div>
-                <div class="score-bar-wrapper">
-                    <div class="score-bar" style="width: ${value}%; background: ${color};"></div>
-                </div>
-                <div class="score-item-value" style="color: ${color};">
-                    ${roundedScore}%
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div class="score-bar-wrapper" style="flex: 1; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                        <div class="score-bar" style="width: ${value}%; height: 100%; background: linear-gradient(90deg, #6366f1, #a855f7); border-radius: 4px;"></div>
+                    </div>
+                    <div class="score-item-value" style="font-weight: 700; min-width: 40px;">${Math.round(value)}%</div>
                 </div>
             `;
-            
-            scoreItems.appendChild(item);
+            scoreItems.appendChild(div);
         }
     }
 }
 
-// Get color based on score
-function getScoreColor(score) {
-    if (score >= 80) return '#10b981';
-    if (score >= 60) return '#6366f1';
-    if (score >= 40) return '#f59e0b';
-    return '#ef4444';
-}
-
-// Update skills
-function updateSkills(skills) {
-    const skillsContainer = document.getElementById('skillsContainer');
-    skillsContainer.innerHTML = '';
-    
-    if (skills.length === 0) {
-        skillsContainer.innerHTML = '<p style="color: var(--text-secondary);">No skills detected</p>';
-        return;
-    }
-    
-    skills.forEach(skill => {
-        const tag = document.createElement('span');
-        tag.className = 'skill-tag';
-        tag.textContent = skill;
-        skillsContainer.appendChild(tag);
-    });
-    
-    // Update skills count in statistics
-    document.getElementById('skillsCount').textContent = skills.length;
-}
-
-// Update sections
-function updateSections(sections) {
-    const sectionsGrid = document.getElementById('sectionsGrid');
-    sectionsGrid.innerHTML = '';
-    
-    const sectionLabels = {
-        contact: 'Contact Information',
-        summary: 'Summary/Objective',
-        experience: 'Work Experience',
-        education: 'Education',
-        skills: 'Skills',
-        projects: 'Projects',
-        certifications: 'Certifications'
-    };
-    
-    for (const [key, present] of Object.entries(sections)) {
-        const item = document.createElement('div');
-        item.className = `section-item ${present ? 'present' : 'missing'}`;
-        
-        item.innerHTML = `
-            <i class="fas ${present ? 'fa-check-circle' : 'fa-times-circle'}"></i>
-            <span>${sectionLabels[key] || key}</span>
-        `;
-        
-        sectionsGrid.appendChild(item);
-    }
-}
-
-// Update suggestions
-function updateSuggestions(suggestions) {
-    const suggestionsList = document.getElementById('suggestionsList');
-    suggestionsList.innerHTML = '';
-    
-    if (suggestions.length === 0) {
-        suggestionsList.innerHTML = '<p style="color: var(--text-secondary); padding: 1rem;">Great job! Your resume looks excellent.</p>';
-        return;
-    }
-    
-    suggestions.forEach(suggestion => {
-        const item = document.createElement('div');
-        item.className = `suggestion-item ${suggestion.priority}`;
-        
-        item.innerHTML = `
-            <i class="fas fa-lightbulb"></i>
-            <div class="suggestion-content">
-                <div class="suggestion-type">${suggestion.type.toUpperCase()} - ${suggestion.priority.toUpperCase()}</div>
-                <div class="suggestion-message">${suggestion.message}</div>
-            </div>
-        `;
-        
-        suggestionsList.appendChild(item);
-    });
-}
-
-// Reset analysis
 function resetAnalysis() {
-    uploadSection.style.display = 'block';
     resultsSection.style.display = 'none';
+    uploadSection.style.display = 'block';
     uploadForm.reset();
     fileName.textContent = 'Choose file or drag & drop';
     fileName.style.color = '';
-    textInput.value = '';
-    currentAnalysisData = null; // Clear stored data
-    
-    // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// Download report
 function downloadReport() {
-    if (!currentAnalysisData) {
-        alert('No analysis data available. Please analyze a resume first.');
-        return;
-    }
-    
-    try {
-        // Generate comprehensive report
-        const report = generateReport();
-        const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `resume-analysis-report-${new Date().getTime()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    } catch (error) {
-        console.error('Error downloading report:', error);
-        alert('Error generating report. Please try again.');
-    }
+    window.print();
 }
 
-// Generate comprehensive report
 function generateReport() {
-    if (!currentAnalysisData) {
-        return 'No analysis data available.';
+    if (!currentAnalysisData) return 'No data';
+    const d = currentAnalysisData;
+    const ai = d.ai_analysis;
+    
+    let report = `AI RESUME DIAGNOSTIC REPORT\n===========================\n\n`;
+    report += `SUMMARY: ${ai ? ai.summary : 'N/A'}\n\n`;
+    report += `ATS COMPATIBILITY SCORE: ${ai ? ai.ats_compatibility.score : d.overall_rating.score}%\n`;
+    if (ai) {
+        report += `MISSING KEYWORDS: ${ai.ats_compatibility.missing_keywords.join(', ')}\n`;
+        report += `FORMATTING ISSUES: ${ai.ats_compatibility.formatting_issues.join(', ')}\n\n`;
+        report += `STRATEGIC ADVICE:\n${ai.strategic_advice}\n`;
     }
-    
-    const data = currentAnalysisData;
-    const overallScore = Math.round(data.overall_rating.score);
-    const rating = data.overall_rating.rating;
-    const stats = data.statistics;
-    const scores = data.scores;
-    
-    let report = `╔══════════════════════════════════════════════════════════════╗
-║           AI RESUME ANALYSIS REPORT                      ║
-╚══════════════════════════════════════════════════════════════╝
-
-Generated: ${new Date().toLocaleString()}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-OVERALL RATING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Score: ${overallScore}/100
-Rating: ${rating}
-
-STATISTICS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Word Count:        ${stats.word_count.toLocaleString()}
-Character Count:  ${stats.char_count.toLocaleString()}
-Sentence Count:   ${stats.sentence_count}
-Readability Score: ${Math.round(stats.readability_score)}/100
-
-SCORE BREAKDOWN
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Completeness:     ${Math.round(scores.completeness)}%
-Skills:           ${Math.round(scores.skills)}%
-Experience:       ${Math.round(scores.experience)}%
-Education:        ${Math.round(scores.education)}%
-Readability:      ${Math.round(scores.readability)}%
-Length:           ${Math.round(scores.length)}%
-
-RESUME SECTIONS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Contact Information:     ${data.sections.contact ? '✓ Present' : '✗ Missing'}
-Summary/Objective:       ${data.sections.summary ? '✓ Present' : '✗ Missing'}
-Work Experience:          ${data.sections.experience ? '✓ Present' : '✗ Missing'}
-Education:               ${data.sections.education ? '✓ Present' : '✗ Missing'}
-Skills:                  ${data.sections.skills ? '✓ Present' : '✗ Missing'}
-Projects:                ${data.sections.projects ? '✓ Present' : '✗ Missing'}
-Certifications:          ${data.sections.certifications ? '✓ Present' : '✗ Missing'}
-
-DETECTED SKILLS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`;
-
-    if (data.skills && data.skills.length > 0) {
-        data.skills.forEach((skill, index) => {
-            report += `${index + 1}. ${skill}\n`;
-        });
-    } else {
-        report += 'No skills detected.\n';
-    }
-    
-    report += `\nIMPROVEMENT SUGGESTIONS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`;
-
-    if (data.suggestions && data.suggestions.length > 0) {
-        data.suggestions.forEach((suggestion, index) => {
-            report += `\n${index + 1}. [${suggestion.priority.toUpperCase()}] ${suggestion.type.toUpperCase()}\n`;
-            report += `   ${suggestion.message}\n`;
-        });
-    } else {
-        report += 'Great job! Your resume looks excellent.\n';
-    }
-    
-    if (data.entities) {
-        report += `\nDETECTED ENTITIES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`;
-        if (data.entities.emails && data.entities.emails.length > 0) {
-            report += `Emails: ${data.entities.emails.join(', ')}\n`;
-        }
-        if (data.entities.phones && data.entities.phones.length > 0) {
-            report += `Phone Numbers: ${data.entities.phones.length} found\n`;
-        }
-        if (data.entities.urls && data.entities.urls.length > 0) {
-            report += `URLs: ${data.entities.urls.join(', ')}\n`;
-        }
-        if (data.entities.organizations && data.entities.organizations.length > 0) {
-            report += `Organizations: ${data.entities.organizations.join(', ')}\n`;
-        }
-    }
-    
-    report += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Report generated by AI Resume Analyzer
-Powered by NLP & Machine Learning
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`;
-    
     return report;
 }

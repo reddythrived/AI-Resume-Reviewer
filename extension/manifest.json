@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "AI Resume Analyzer",
+  "version": "1.0",
+  "description": "Open AI Resume Analyzer - Analyze your resume with AI-powered insights",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Resume Analyzer"
+  },
+  "permissions": ["tabs"]
+}

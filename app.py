@@ -26,7 +26,13 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    has_api_key = bool(
+        os.environ.get("GEMINI_API_KEY") or 
+        os.environ.get("GROK_API_KEY") or 
+        os.environ.get("OPENAI_API_KEY") or
+        analyzer.api_key
+    )
+    return render_template('index.html', api_configured=has_api_key)
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_resume():
@@ -47,8 +53,11 @@ def analyze_resume():
         file.save(filepath)
         
         try:
+            # Get job description if provided
+            job_description = request.form.get('job_description')
+            
             # Analyze resume
-            analysis = analyzer.analyze(filepath)
+            analysis = analyzer.analyze(filepath, job_description)
             
             # Clean up uploaded file
             os.remove(filepath)
@@ -71,11 +80,13 @@ def analyze_text():
             return jsonify({'error': 'No text provided'}), 400
         
         text = data['text']
+        job_description = data.get('job_description')
+        
         if not text.strip():
             return jsonify({'error': 'Empty text provided'}), 400
         
         # Analyze text directly
-        analysis = analyzer.analyze_text(text)
+        analysis = analyzer.analyze_text(text, job_description)
         return jsonify(analysis)
         
     except Exception as e:
