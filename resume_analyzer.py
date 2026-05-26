@@ -188,8 +188,10 @@ class ResumeAnalyzer:
             return None
 
         jd_prompt = ""
+        score_instruction = "The 'score' under 'ats_compatibility' must evaluate the overall strength and professional quality of the resume on a scale of 0-100 (rating layout, metrics, clarity, and content)."
         if job_description:
             jd_prompt = f"\nTARGET JOB DESCRIPTION:\n{job_description}\n"
+            score_instruction = "The 'score' under 'ats_compatibility' must evaluate the ATS compatibility/match score (0-100) between the resume and the target job description (how well the skills, experience, and content align with the job requirements)."
 
         prompt = f"""
         You are an expert technical recruiter and ATS (Applicant Tracking System) specialist.
@@ -197,6 +199,9 @@ class ResumeAnalyzer:
         {jd_prompt}
         RESUME CONTENT:
         {resume_text}
+
+        INSTRUCTIONS:
+        {score_instruction}
 
         Return ONLY valid JSON with this structure:
         {{
@@ -264,8 +269,10 @@ class ResumeAnalyzer:
             return None
 
         jd_prompt = ""
+        score_instruction = "The 'score' under 'ats_compatibility' must evaluate the overall strength and professional quality of the resume on a scale of 0-100 (rating layout, metrics, clarity, and content)."
         if job_description:
             jd_prompt = f"\nTARGET JOB DESCRIPTION:\n{job_description}\n"
+            score_instruction = "The 'score' under 'ats_compatibility' must evaluate the ATS compatibility/match score (0-100) between the resume and the target job description (how well the skills, experience, and content align with the job requirements)."
 
         prompt = f"""
         You are an expert technical recruiter and ATS (Applicant Tracking System) specialist.
@@ -273,6 +280,9 @@ class ResumeAnalyzer:
         {jd_prompt}
         RESUME CONTENT:
         {resume_text}
+
+        INSTRUCTIONS:
+        {score_instruction}
 
         Return ONLY valid JSON with this structure:
         {{
@@ -326,8 +336,10 @@ class ResumeAnalyzer:
             return None
 
         jd_prompt = ""
+        score_instruction = "The 'score' under 'ats_compatibility' must evaluate the overall strength and professional quality of the resume on a scale of 0-100 (rating layout, metrics, clarity, and content)."
         if job_description:
             jd_prompt = f"\nTARGET JOB DESCRIPTION:\n{job_description}\n"
+            score_instruction = "The 'score' under 'ats_compatibility' must evaluate the ATS compatibility/match score (0-100) between the resume and the target job description (how well the skills, experience, and content align with the job requirements)."
 
         prompt = f"""
         You are an expert technical recruiter and ATS (Applicant Tracking System) specialist.
@@ -335,6 +347,9 @@ class ResumeAnalyzer:
         {jd_prompt}
         RESUME CONTENT:
         {resume_text}
+
+        INSTRUCTIONS:
+        {score_instruction}
 
         Return ONLY valid JSON with this structure:
         {{
@@ -476,15 +491,60 @@ class ResumeAnalyzer:
                     "optimized": opt
                 })
                 
-        # Strategic advice
-        advice = "1. **Integrate Action Verbs & Metrics**: Rewrite your experience bullet points using the STAR methodology (Situation, Task, Action, Result) to highlight quantifiable outcomes.\n"
-        advice += "2. **Target Keywords**: Align your skills and terminology with the job description to pass automated ATS filters.\n"
-        advice += "3. **Configure API Key**: To unlock personalized, deep semantic AI insights and customized suggestions, please configure a `GEMINI_API_KEY` or `GROK_API_KEY` in your environment."
-        
-        completeness = sum(1 for v in sections.values() if v) / 7.0
-        score = int(45 + completeness * 35 + (min(len(skills), 10) / 10.0) * 15)
-        if score > 98: 
-            score = 98
+        # Calculate score dynamically depending on whether Job Description is provided
+        if job_description:
+            jd_words = set(re.findall(r'\b\w+\b', job_description.lower()))
+            resume_words = set(re.findall(r'\b\w+\b', text.lower()))
+            
+            # Find technical keywords present in JD
+            jd_skills = [s for s in self.skills_keywords if s.lower() in jd_words]
+            if jd_skills:
+                matching_skills = [s for s in jd_skills if s.title() in skills]
+                skill_match_ratio = len(matching_skills) / len(jd_skills)
+            else:
+                skill_match_ratio = 0.5 # Default fallback
+                
+            # Generic word overlap
+            important_jd_words = jd_words - self.stop_words
+            important_res_words = resume_words - self.stop_words
+            overlap = important_jd_words.intersection(important_res_words)
+            overlap_ratio = len(overlap) / max(1, len(important_jd_words))
+            
+            # Combine skill match and word overlap
+            match_score = int((skill_match_ratio * 70) + (overlap_ratio * 30))
+            score = max(10, min(100, match_score))
+        else:
+            completeness = sum(1 for v in sections.values() if v) / 7.0
+            score = int(45 + completeness * 35 + (min(len(skills), 10) / 10.0) * 15)
+            if score > 98: 
+                score = 98
+
+        # Dynamic Strategic Advice based on Score and Job Description
+        advice_steps = []
+        if job_description:
+            advice_steps.append(f"1. **Match Score: {score}%**: Your resume currently has a {score}% match alignment with the target job description.")
+            if score < 60:
+                advice_steps.append("2. **Add Target Keywords**: Incorporate critical missing technical terms (such as: " + ", ".join(missing_kw[:3]) + ") into your experience bullet points to satisfy ATS filters.")
+                advice_steps.append("3. **Highlight Core Skills**: Move your skills section to the top of your resume and group them by domain to align with the job requirements.")
+            elif score < 80:
+                advice_steps.append("2. **Refine Context Alignment**: You have many overlapping keywords, but you need to detail *how* you used these skills. Rewrite bullet points to state the exact context.")
+                advice_steps.append("3. **Quantify Projects**: Add percentages, time-savings, or budget sizes to your projects page to demonstrate high-level business alignment.")
+            else:
+                advice_steps.append("2. **Tailor Profile Summary**: Tailor your headline/summary paragraph to exactly match the title of the target position.")
+                advice_steps.append("3. **Ready to Apply**: Your resume is highly compatible with this role. Prepare behavioral interview stories highlighting these skills.")
+        else:
+            advice_steps.append(f"1. **General Score: {score}%**: Based on structure and content parsing, your resume strength is rated at {score}%.")
+            if score < 60:
+                advice_steps.append("2. **Complete Sections**: Add missing core sections like a Professional Summary or Certifications to achieve standard formatting structure.")
+                advice_steps.append("3. **Expand Tech Stack**: List more technical tools, languages, or workflows you have worked with to improve keyword depth.")
+            elif score < 80:
+                advice_steps.append("2. **Deploy Action Verbs**: Start every experience bullet point with strong action verbs (e.g. 'Architected', 'Spearheaded', 'Optimized') rather than 'Responsible for'.")
+                advice_steps.append("3. **Include Metrics**: Integrate quantifiable results (such as latency reduction, team size managed, or user growth) to prove business value.")
+            else:
+                advice_steps.append("2. **Tailor for Target Roles**: This is a very strong general resume. Make sure to paste a target Job Description to simulate a direct ATS matching alignment.")
+                advice_steps.append("3. **Configure Cloud AI**: Add a `GEMINI_API_KEY` to your environment variables to get a deep semantic executive summary and AI-powered bullet-point optimizer.")
+
+        advice = "\n".join(advice_steps)
         
         return {
             "summary": "This is a local heuristics analysis of your resume. You have strong foundations in " + (", ".join(skills[:3]) if skills else "technical fields") + ". To unlock a full generative AI executive summary, please configure a Gemini or Grok API key.",
