@@ -62,6 +62,9 @@ def analyze_resume():
             # Clean up uploaded file
             os.remove(filepath)
             
+            if 'error' in analysis:
+                return jsonify(analysis), 400
+            
             return jsonify(analysis)
         except Exception as e:
             # Clean up on error
@@ -87,6 +90,8 @@ def analyze_text():
         
         # Analyze text directly
         analysis = analyzer.analyze_text(text, job_description)
+        if 'error' in analysis:
+            return jsonify(analysis), 400
         return jsonify(analysis)
         
     except Exception as e:
