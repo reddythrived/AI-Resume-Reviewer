@@ -13,23 +13,32 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Download required NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt', quiet=True)
+nltk_data_path = '/tmp/nltk_data' if os.environ.get('VERCEL') else None
 
-try:
-    nltk.data.find('taggers/averaged_perceptron_tagger')
-except LookupError:
-    nltk.download('averaged_perceptron_tagger', quiet=True)
+if nltk_data_path:
+    os.makedirs(nltk_data_path, exist_ok=True)
+    if nltk_data_path not in nltk.data.path:
+        nltk.data.path.append(nltk_data_path)
 
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords', quiet=True)
+def _safe_nltk_download(package_name, package_path):
+    try:
+        nltk.data.find(package_path)
+    except LookupError:
+        try:
+            if nltk_data_path:
+                nltk.download(package_name, download_dir=nltk_data_path, quiet=True)
+            else:
+                nltk.download(package_name, quiet=True)
+        except Exception as e:
+            print(f"Warning: Failed to download NLTK package {package_name}: {e}")
+
+_safe_nltk_download('punkt', 'tokenizers/punkt')
+_safe_nltk_download('averaged_perceptron_tagger', 'taggers/averaged_perceptron_tagger')
+_safe_nltk_download('stopwords', 'corpora/stopwords')
 
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize, sent_tokenize
+
 
 class ResumeAnalyzer:
     def __init__(self):
