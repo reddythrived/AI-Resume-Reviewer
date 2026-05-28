@@ -6,7 +6,7 @@ spacy==3.7.2
 numpy==1.26.4
 nltk==3.8.1
 textstat==0.7.3
-setuptools
+setuptools<82.0.0
 Werkzeug==3.0.1
 python-dotenv==1.0.0
 requests==2.31.0
