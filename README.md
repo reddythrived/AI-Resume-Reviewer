@@ -2,7 +2,7 @@
 
 ### Live Demo
 
-https://ai-resume-reviewer-3nr7outon-reddythriveds-projects.vercel.app/
+https://ai-resume-reviewer-khaki.vercel.app/
 
 ---
 
